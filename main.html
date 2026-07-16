@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TRIO — ER Command Center</title>
+<style>
+  /* ====== TRIO clinician dark theme (validated palette roles) ====== */
+  :root {
+    color-scheme: dark;
+    --page:        #0d0d0d;
+    --surface:     #1a1a19;
+    --surface-2:   #232322;
+    --ink:         #ffffff;
+    --ink-2:       #c3c2b7;
+    --muted:       #898781;
+    --hairline:    rgba(255,255,255,0.10);
+    --grid:        #2c2c2a;
+    /* status palette — fixed, never reused as series */
+    --good:        #0ca30c;
+    --warning:     #fab219;
+    --serious:     #ec835a;
+    --critical:    #d03b3b;
+    --accent:      #3987e5; /* categorical slot 1, dark step */
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--page);
+    color: var(--ink);
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    min-height: 100vh;
+    padding: 20px 24px 40px;
+  }
+  header {
+    display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap;
+    margin-bottom: 6px;
+  }
+  header h1 { font-size: 22px; letter-spacing: 0.04em; }
+  header h1 span { color: var(--accent); }
+  .sub { color: var(--muted); font-size: 13px; }
+  .live {
+    margin-left: auto; display: flex; align-items: center; gap: 8px;
+    font-size: 13px; color: var(--ink-2);
+  }
+  .dot {
+    width: 9px; height: 9px; border-radius: 50%;
+    background: var(--good); animation: pulse 2s infinite;
+  }
+  .dot.demo { background: var(--warning); animation: none; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.35} }
+
+  /* KPI row */
+  .kpis {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(160px,1fr));
+    gap: 12px; margin: 18px 0;
+  }
+  .kpi {
+    background: var(--surface); border: 1px solid var(--hairline);
+    border-radius: 10px; padding: 14px 16px;
+  }
+  .kpi .label { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
+  .kpi .value { font-size: 32px; font-weight: 650; margin-top: 4px; }
+  .kpi .value small { font-size: 15px; color: var(--ink-2); font-weight: 400; }
+
+  /* layout */
+  .grid {
+    display: grid; gap: 14px;
+    grid-template-columns: minmax(380px, 1.4fr) minmax(300px, 1fr);
+    align-items: start;
+  }
+  @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+  .panel {
+    background: var(--surface); border: 1px solid var(--hairline);
+    border-radius: 10px; overflow: hidden;
+  }
+  .panel h2 {
+    font-size: 13px; text-transform: uppercase; letter-spacing: .1em;
+    color: var(--ink-2); padding: 12px 16px; border-bottom: 1px solid var(--grid);
+    display: flex; align-items: center; gap: 8px;
+  }
+  .panel h2 .count {
+    margin-left: auto; font-size: 12px; color: var(--muted);
+    text-transform: none; letter-spacing: 0;
+  }
+
+  /* queue table */
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th {
+    text-align: left; font-size: 11px; color: var(--muted);
+    text-transform: uppercase; letter-spacing: .07em;
+    padding: 8px 12px; border-bottom: 1px solid var(--grid);
+  }
+  td {
+    padding: 10px 12px; border-bottom: 1px solid var(--grid);
+    color: var(--ink-2); vertical-align: middle;
+  }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: var(--surface-2); }
+  td.name { color: var(--ink); font-weight: 550; }
+  td.score { font-variant-numeric: tabular-nums; font-weight: 650; font-size: 16px; color: var(--ink); }
+  .badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 12px; font-weight: 600; padding: 3px 9px;
+    border-radius: 999px; border: 1px solid;
+  }
+  .badge::before { content: "●"; font-size: 9px; }
+  .badge.critical { color: #ff8f8f; border-color: var(--critical); background: rgba(208,59,59,.14); }
+  .badge.urgent   { color: var(--warning); border-color: var(--warning); background: rgba(250,178,25,.10); }
+  .badge.routine  { color: #6fd66f; border-color: var(--good); background: rgba(12,163,12,.10); }
+  .scorebar { height: 4px; border-radius: 2px; background: var(--grid); margin-top: 5px; width: 72px; }
+  .scorebar i { display: block; height: 100%; border-radius: 2px; }
+
+  /* rooms board */
+  .rooms {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(120px,1fr));
+    gap: 10px; padding: 14px;
+  }
+  .room {
+    border-radius: 8px; padding: 10px 12px; border: 1px solid var(--hairline);
+    background: var(--surface-2);
+  }
+  .room.free { border-color: rgba(12,163,12,.55); }
+  .room.occupied { border-color: rgba(208,59,59,.55); }
+  .room .rid { font-weight: 700; font-size: 15px; }
+  .room .rtype { color: var(--muted); font-size: 12px; text-transform: capitalize; }
+  .room .rstatus { font-size: 12px; font-weight: 650; margin-top: 6px; display:flex; align-items:center; gap:5px;}
+  .room.free .rstatus { color: #6fd66f; }
+  .room.occupied .rstatus { color: #ff8f8f; }
+  .room .rpatient { font-size: 11px; color: var(--ink-2); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* alerts */
+  .alerts { padding: 6px 0; }
+  .alert-row {
+    display: flex; gap: 10px; align-items: flex-start;
+    padding: 10px 16px; border-bottom: 1px solid var(--grid);
+    font-size: 13px; color: var(--ink-2);
+  }
+  .alert-row:last-child { border-bottom: none; }
+  .alert-row .icon { color: var(--warning); font-size: 15px; }
+  .alert-row b { color: var(--ink); }
+  .alert-row .when { margin-left: auto; color: var(--muted); font-size: 12px; white-space: nowrap; }
+  .empty { padding: 18px 16px; color: var(--muted); font-size: 13px; }
+
+  /* doctors */
+  .docs { padding: 6px 0; }
+  .doc-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 16px; border-bottom: 1px solid var(--grid); font-size: 13px;
+  }
+  .doc-row:last-child { border-bottom: none; }
+  .doc-avatar {
+    width: 30px; height: 30px; border-radius: 50%; flex: none;
+    background: var(--surface-2); border: 1px solid var(--hairline);
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 12px; color: var(--accent);
+  }
+  .doc-row .dname { color: var(--ink); font-weight: 550; }
+  .doc-row .dspec { color: var(--muted); font-size: 12px; text-transform: capitalize; }
+  .doc-row .dphone { margin-left: auto; color: var(--ink-2); font-variant-numeric: tabular-nums; font-size: 12px; }
+
+  .footer { margin-top: 16px; color: var(--muted); font-size: 12px; }
+  .col { display: flex; flex-direction: column; gap: 14px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>TRIO <span>·</span> ER Command Center</h1>
+  <span class="sub">AI triage &amp; orchestration — the doctor keeps the final word</span>
+  <div class="live">
+    <span class="dot" id="liveDot"></span>
+    <span id="liveText">connecting…</span>
+    <span id="clock" style="font-variant-numeric:tabular-nums;"></span>
+  </div>
+</header>
+
+<div class="kpis">
+  <div class="kpi"><div class="label">Patients in queue</div><div class="value" id="kpiQueue">–</div></div>
+  <div class="kpi"><div class="label">Critical now</div><div class="value" id="kpiCritical" style="color:#ff8f8f">–</div></div>
+  <div class="kpi"><div class="label">Rooms free</div><div class="value" id="kpiRooms">–</div></div>
+  <div class="kpi"><div class="label">Staff alerts</div><div class="value" id="kpiAlerts" style="color:var(--warning)">–</div></div>
+</div>
+
+<div class="grid">
+  <div class="col">
+    <div class="panel">
+      <h2>ER Queue — ranked by AI urgency score <span class="count" id="queueCount"></span></h2>
+      <div id="queuePanel"><div class="empty">Waiting for data…</div></div>
+    </div>
+    <div class="panel">
+      <h2>⚠ Staff alerts <span class="count" id="alertCount"></span></h2>
+      <div class="alerts" id="alertsPanel"><div class="empty">No alerts — all patients placed.</div></div>
+    </div>
+  </div>
+  <div class="col">
+    <div class="panel">
+      <h2>Rooms board <span class="count" id="roomCount"></span></h2>
+      <div class="rooms" id="roomsPanel"></div>
+    </div>
+    <div class="panel">
+      <h2>On-call doctors</h2>
+      <div class="docs" id="docsPanel"><div class="empty">No doctors list.</div></div>
+    </div>
+  </div>
+</div>
+
+<p class="footer" id="footer">TRIO · Fusion AI Hackathon · data refreshes every 5 s</p>
+
+<script>
+/* ================= CONFIG =================
+   Publish each tab of the TRIO-DB Google Sheet as CSV:
+   File → Share → Publish to web → (pick tab, pick CSV) → copy link.
+   Paste each link below. Leave "" to use built-in DEMO data.        */
+const CSV = {
+  patients: "https://docs.google.com/spreadsheets/d/e/2PACX-1vSOfmZglP5waupYqNOFtYmzHMVLjkuLXzTgmGZDD8-NZ6fniww8BgHTTcf6Ya3jD6X8-Qn60NJxK4fR/pub?gid=1106718382&single=true&output=csv",   // patients_queue tab
+  rooms:    "https://docs.google.com/spreadsheets/d/e/2PACX-1vSOfmZglP5waupYqNOFtYmzHMVLjkuLXzTgmGZDD8-NZ6fniww8BgHTTcf6Ya3jD6X8-Qn60NJxK4fR/pub?gid=1190572709&single=true&output=csv",   // rooms tab
+  alerts:   "https://docs.google.com/spreadsheets/d/e/2PACX-1vSOfmZglP5waupYqNOFtYmzHMVLjkuLXzTgmGZDD8-NZ6fniww8BgHTTcf6Ya3jD6X8-Qn60NJxK4fR/pub?gid=2078139821&single=true&output=csv",   // alerts tab
+  doctors:  "https://docs.google.com/spreadsheets/d/e/2PACX-1vSOfmZglP5waupYqNOFtYmzHMVLjkuLXzTgmGZDD8-NZ6fniww8BgHTTcf6Ya3jD6X8-Qn60NJxK4fR/pub?gid=1046934430&single=true&output=csv"    // doctors_numbers tab
+};
+const REFRESH_MS = 5000;
+/* ========================================== */
+
+const DEMO = {
+  patients: [
+    ["web-001","Khalil B.","N/A","stabbed in abdomen, heavy bleeding","ambulance","95","critical","Immediate resuscitation required","2026-07-16T01:12:00Z"],
+    ["web-002","Samira E.","AB1234","chest pain radiating to left arm","ambulance","82","critical","Suspected acute coronary syndrome","2026-07-16T01:20:00Z"],
+    ["web-003","Omar T.","CD5678","fell from ladder, leg deformity","walk-in","64","urgent","Possible fracture, needs imaging","2026-07-16T01:25:00Z"],
+    ["web-004","Asmae R.","N/A","persistent fever 39.5°C","walk-in","55","urgent","Fever workup required","2026-07-16T01:31:00Z"],
+    ["web-005","Hajar L.","EF9012","small cut on finger","walk-in","15","routine","Superficial wound, cleaning and dressing","2026-07-16T01:40:00Z"]
+  ],
+  rooms: [
+    ["R1","trauma","occupied","web-001"],
+    ["R2","trauma","occupied","P-993"],
+    ["R3","general","free",""],
+    ["R4","imaging","free",""],
+    ["R5","general","occupied","P-871"],
+    ["R6","trauma","free",""],
+    ["R7","imaging","occupied","web-002"],
+    ["R8","general","free",""]
+  ],
+  alerts: [
+    ["web-002","Samira E.","82","trauma","NO ROOM — STAFF ACTION NEEDED","2026-07-16T01:21:10Z"]
+  ],
+  doctors: [
+    ["Mohamed ben","1","212600000001","radiologist"],
+    ["Ahmed imad","2","212600000002","surgeon"],
+    ["Sara Alaoui","3","212600000003","general practitioner"],
+    ["Youssef Tazi","4","212600000004","cardiologist"],
+    ["Fatima Ezzahra","5","212600000005","anesthesiologist"]
+  ]
+};
+
+const demoMode = !CSV.patients && !CSV.rooms;
+
+/* --- tiny CSV parser (handles quoted fields) --- */
+function parseCSV(text) {
+  const rows = []; let row = [], cur = "", q = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (q) {
+      if (c === '"' && text[i+1] === '"') { cur += '"'; i++; }
+      else if (c === '"') q = false;
+      else cur += c;
+    } else {
+      if (c === '"') q = true;
+      else if (c === ',') { row.push(cur); cur = ""; }
+      else if (c === '\n' || c === '\r') {
+        if (cur !== "" || row.length) { row.push(cur); rows.push(row); row = []; cur = ""; }
+        if (c === '\r' && text[i+1] === '\n') i++;
+      } else cur += c;
+    }
+  }
+  if (cur !== "" || row.length) { row.push(cur); rows.push(row); }
+  return rows;
+}
+function stripHeader(rows, firstHeaderCell) {
+  if (rows.length && String(rows[0][0]).trim().toLowerCase() === firstHeaderCell) return rows.slice(1);
+  return rows;
+}
+async function fetchTab(url, headerCell) {
+  const res = await fetch(url + (url.includes("?") ? "&" : "?") + "t=" + Date.now(), { cache: "no-store" });
+  return stripHeader(parseCSV(await res.text()), headerCell);
+}
+
+/* --- rendering --- */
+const catClass = c => {
+  c = String(c || "").toLowerCase();
+  return c === "critical" ? "critical" : c === "urgent" ? "urgent" : "routine";
+};
+const catColor = c => c === "critical" ? "var(--critical)" : c === "urgent" ? "var(--warning)" : "var(--good)";
+const fmtTime = iso => {
+  const d = new Date(iso);
+  return isNaN(d) ? String(iso || "") : d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+};
+
+function renderQueue(rows) {
+  // patients_queue: id,name,cin,symptoms,arrival_mode,score,category,reason,created_at
+  const sorted = rows.filter(r => r[0]).slice().sort((a,b) => Number(b[5]) - Number(a[5]));
+  document.getElementById("kpiQueue").textContent = sorted.length;
+  document.getElementById("kpiCritical").textContent = sorted.filter(r => catClass(r[6]) === "critical").length;
+  document.getElementById("queueCount").textContent = sorted.length + " patients";
+  if (!sorted.length) { document.getElementById("queuePanel").innerHTML = '<div class="empty">Queue is empty.</div>'; return; }
+  let html = '<table role="table"><thead><tr><th>Score</th><th>Patient</th><th>Symptoms</th><th>Arrival</th><th>Triage</th><th>Time</th></tr></thead><tbody>';
+  for (const r of sorted) {
+    const cls = catClass(r[6]);
+    html += `<tr>
+      <td class="score">${r[5] ?? ""}<div class="scorebar"><i style="width:${Math.min(100, Number(r[5])||0)}%;background:${catColor(cls)}"></i></div></td>
+      <td class="name">${esc(r[1] || r[0])}</td>
+      <td title="${esc(r[7]||"")}">${esc(r[3] || "")}</td>
+      <td>${esc(r[4] || "")}</td>
+      <td><span class="badge ${cls}">${cls}</span></td>
+      <td style="font-variant-numeric:tabular-nums">${fmtTime(r[8])}</td>
+    </tr>`;
+  }
+  document.getElementById("queuePanel").innerHTML = html + "</tbody></table>";
+}
+
+function renderRooms(rows) {
+  const rooms = rows.filter(r => r[0]);
+  const free = rooms.filter(r => String(r[2]).trim().toLowerCase() === "free");
+  document.getElementById("kpiRooms").innerHTML = free.length + '<small> / ' + rooms.length + '</small>';
+  document.getElementById("roomCount").textContent = free.length + " free";
+  document.getElementById("roomsPanel").innerHTML = rooms.map(r => {
+    const isFree = String(r[2]).trim().toLowerCase() === "free";
+    return `<div class="room ${isFree ? "free" : "occupied"}">
+      <div class="rid">${esc(r[0])}</div>
+      <div class="rtype">${esc(r[1] || "")}</div>
+      <div class="rstatus">${isFree ? "✓ FREE" : "✕ OCCUPIED"}</div>
+      <div class="rpatient">${isFree ? "&nbsp;" : esc(r[3] || "")}</div>
+    </div>`;
+  }).join("");
+}
+
+function renderAlerts(rows) {
+  const alerts = rows.filter(r => r[0]).slice().reverse();
+  document.getElementById("kpiAlerts").textContent = alerts.length;
+  document.getElementById("alertCount").textContent = alerts.length ? alerts.length + " active" : "";
+  if (!alerts.length) { document.getElementById("alertsPanel").innerHTML = '<div class="empty">No alerts — all patients placed.</div>'; return; }
+  document.getElementById("alertsPanel").innerHTML = alerts.map(a => `
+    <div class="alert-row">
+      <span class="icon">⚠</span>
+      <span><b>${esc(a[1] || a[0])}</b> (score ${esc(a[2]||"?")}) needs a <b>${esc(a[3]||"?")}</b> room — ${esc(a[4]||"no room available")}</span>
+      <span class="when">${fmtTime(a[5])}</span>
+    </div>`).join("");
+}
+
+function renderDocs(rows) {
+  const docs = rows.filter(r => r[0]);
+  if (!docs.length) return;
+  document.getElementById("docsPanel").innerHTML = docs.map(d => `
+    <div class="doc-row">
+      <div class="doc-avatar">${esc(String(d[0]||"?").split(/\s+/).map(w=>w[0]).join("").slice(0,2).toUpperCase())}</div>
+      <div><div class="dname">Dr. ${esc(d[0])}</div><div class="dspec">${esc(d[3] || "")}</div></div>
+      <div class="dphone">${esc(d[2] || "")}</div>
+    </div>`).join("");
+}
+
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, m => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[m]));
+}
+
+/* --- main loop --- */
+async function tick() {
+  const dot = document.getElementById("liveDot"), txt = document.getElementById("liveText");
+  try {
+    let p, r, a, d;
+    if (demoMode) {
+      ({ patients: p, rooms: r, alerts: a, doctors: d } = DEMO);
+      dot.className = "dot demo"; txt.textContent = "DEMO MODE — paste CSV links to go live";
+    } else {
+      [p, r, a, d] = await Promise.all([
+        CSV.patients ? fetchTab(CSV.patients, "patient_id") : [],
+        CSV.rooms    ? fetchTab(CSV.rooms, "room_id")       : [],
+        CSV.alerts   ? fetchTab(CSV.alerts, "patient_id")   : [],
+        CSV.doctors  ? fetchTab(CSV.doctors, "doctor_name") : []
+      ]);
+      dot.className = "dot"; txt.textContent = "LIVE — TRIO-DB";
+    }
+    renderQueue(p); renderRooms(r); renderAlerts(a); renderDocs(d);
+  } catch (e) {
+    dot.className = "dot demo"; txt.textContent = "connection issue — retrying…";
+  }
+}
+setInterval(() => {
+  document.getElementById("clock").textContent = new Date().toLocaleTimeString();
+}, 1000);
+tick();
+setInterval(tick, REFRESH_MS);
+</script>
+</body>
+</html>
