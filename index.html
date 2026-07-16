@@ -48,7 +48,6 @@
   }
   .dot.demo { background: var(--warning); animation: none; }
   @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.35} }
-
   /* KPI row */
   .kpis {
     display: grid; grid-template-columns: repeat(auto-fit, minmax(160px,1fr));
@@ -61,7 +60,6 @@
   .kpi .label { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
   .kpi .value { font-size: 32px; font-weight: 650; margin-top: 4px; }
   .kpi .value small { font-size: 15px; color: var(--ink-2); font-weight: 400; }
-
   /* layout */
   .grid {
     display: grid; gap: 14px;
@@ -82,7 +80,6 @@
     margin-left: auto; font-size: 12px; color: var(--muted);
     text-transform: none; letter-spacing: 0;
   }
-
   /* queue table */
   table { width: 100%; border-collapse: collapse; font-size: 14px; }
   th {
@@ -106,10 +103,20 @@
   .badge::before { content: "●"; font-size: 9px; }
   .badge.critical { color: #ff8f8f; border-color: var(--critical); background: rgba(208,59,59,.14); }
   .badge.urgent   { color: var(--warning); border-color: var(--warning); background: rgba(250,178,25,.10); }
+  .badge.serious  { color: var(--serious); border-color: var(--serious); background: rgba(236,131,90,.12); }
   .badge.routine  { color: #6fd66f; border-color: var(--good); background: rgba(12,163,12,.10); }
   .scorebar { height: 4px; border-radius: 2px; background: var(--grid); margin-top: 5px; width: 72px; }
   .scorebar i { display: block; height: 100%; border-radius: 2px; }
-
+  /* scan reports (TRIO-SCAN) */
+  .flagpill {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-size: 12px; font-weight: 650; padding: 3px 9px; border-radius: 999px;
+    color: var(--warning); border: 1px solid var(--warning); background: rgba(250,178,25,.10);
+    white-space: nowrap;
+  }
+  .clearpill { color: var(--muted); font-size: 12px; }
+  td.findings { max-width: 170px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+  #scansPanel th, #scansPanel td { padding-left: 8px; padding-right: 8px; }
   /* rooms board */
   .rooms {
     display: grid; grid-template-columns: repeat(auto-fill, minmax(120px,1fr));
@@ -127,7 +134,6 @@
   .room.free .rstatus { color: #6fd66f; }
   .room.occupied .rstatus { color: #ff8f8f; }
   .room .rpatient { font-size: 11px; color: var(--ink-2); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
   /* alerts */
   .alerts { padding: 6px 0; }
   .alert-row {
@@ -140,7 +146,6 @@
   .alert-row b { color: var(--ink); }
   .alert-row .when { margin-left: auto; color: var(--muted); font-size: 12px; white-space: nowrap; }
   .empty { padding: 18px 16px; color: var(--muted); font-size: 13px; }
-
   /* doctors */
   .docs { padding: 6px 0; }
   .doc-row {
@@ -157,13 +162,11 @@
   .doc-row .dname { color: var(--ink); font-weight: 550; }
   .doc-row .dspec { color: var(--muted); font-size: 12px; text-transform: capitalize; }
   .doc-row .dphone { margin-left: auto; color: var(--ink-2); font-variant-numeric: tabular-nums; font-size: 12px; }
-
   .footer { margin-top: 16px; color: var(--muted); font-size: 12px; }
   .col { display: flex; flex-direction: column; gap: 14px; }
 </style>
 </head>
 <body>
-
 <header>
   <h1>TRIO <span>·</span> ER Command Center</h1>
   <span class="sub">AI triage &amp; orchestration — the doctor keeps the final word</span>
@@ -173,19 +176,22 @@
     <span id="clock" style="font-variant-numeric:tabular-nums;"></span>
   </div>
 </header>
-
 <div class="kpis">
   <div class="kpi"><div class="label">Patients in queue</div><div class="value" id="kpiQueue">–</div></div>
   <div class="kpi"><div class="label">Critical now</div><div class="value" id="kpiCritical" style="color:#ff8f8f">–</div></div>
   <div class="kpi"><div class="label">Rooms free</div><div class="value" id="kpiRooms">–</div></div>
+  <div class="kpi"><div class="label">Scans flagged</div><div class="value" id="kpiScans" style="color:var(--serious)">–</div></div>
   <div class="kpi"><div class="label">Staff alerts</div><div class="value" id="kpiAlerts" style="color:var(--warning)">–</div></div>
 </div>
-
 <div class="grid">
   <div class="col">
     <div class="panel">
       <h2>ER Queue — ranked by AI urgency score <span class="count" id="queueCount"></span></h2>
       <div id="queuePanel"><div class="empty">Waiting for data…</div></div>
+    </div>
+    <div class="panel">
+      <h2>AI Scan Reports — TRIO-SCAN <span class="count" id="scanCount"></span></h2>
+      <div id="scansPanel"><div class="empty">No scan reports yet.</div></div>
     </div>
     <div class="panel">
       <h2>⚠ Staff alerts <span class="count" id="alertCount"></span></h2>
@@ -203,9 +209,7 @@
     </div>
   </div>
 </div>
-
 <p class="footer" id="footer">TRIO · Fusion AI Hackathon · data refreshes every 5 s</p>
-
 <script>
 /* ================= CONFIG =================
    Publish each tab of the TRIO-DB Google Sheet as CSV:
@@ -215,11 +219,14 @@ const CSV = {
   patients: "https://docs.google.com/spreadsheets/d/e/2PACX-1vSOfmZglP5waupYqNOFtYmzHMVLjkuLXzTgmGZDD8-NZ6fniww8BgHTTcf6Ya3jD6X8-Qn60NJxK4fR/pub?gid=1106718382&single=true&output=csv",   // patients_queue tab
   rooms:    "https://docs.google.com/spreadsheets/d/e/2PACX-1vSOfmZglP5waupYqNOFtYmzHMVLjkuLXzTgmGZDD8-NZ6fniww8BgHTTcf6Ya3jD6X8-Qn60NJxK4fR/pub?gid=1190572709&single=true&output=csv",   // rooms tab
   alerts:   "https://docs.google.com/spreadsheets/d/e/2PACX-1vSOfmZglP5waupYqNOFtYmzHMVLjkuLXzTgmGZDD8-NZ6fniww8BgHTTcf6Ya3jD6X8-Qn60NJxK4fR/pub?gid=2078139821&single=true&output=csv",   // alerts tab
-  doctors:  "https://docs.google.com/spreadsheets/d/e/2PACX-1vSOfmZglP5waupYqNOFtYmzHMVLjkuLXzTgmGZDD8-NZ6fniww8BgHTTcf6Ya3jD6X8-Qn60NJxK4fR/pub?gid=1046934430&single=true&output=csv"    // doctors_numbers tab
+  doctors:  "https://docs.google.com/spreadsheets/d/e/2PACX-1vSOfmZglP5waupYqNOFtYmzHMVLjkuLXzTgmGZDD8-NZ6fniww8BgHTTcf6Ya3jD6X8-Qn60NJxK4fR/pub?gid=1046934430&single=true&output=csv",   // doctors_numbers tab
+  /* ScanReports tab (TRIO-IMAGING branch):
+     works as-is via the gviz endpoint (sheet name, no gid needed).
+     If you prefer the published link, replace with pub?gid=THE_SCANREPORTS_GID&single=true&output=csv */
+  scans:    "https://docs.google.com/spreadsheets/d/16oT3qi1YTPmycVFx7PijikNt3TCDaaTQeLyaGBpGDH0/gviz/tq?tqx=out:csv&sheet=ScanReports"
 };
 const REFRESH_MS = 5000;
 /* ========================================== */
-
 const DEMO = {
   patients: [
     ["web-001","Khalil B.","N/A","stabbed in abdomen, heavy bleeding","ambulance","95","critical","Immediate resuscitation required","2026-07-16T01:12:00Z"],
@@ -247,11 +254,15 @@ const DEMO = {
     ["Sara Alaoui","3","212600000003","general practitioner"],
     ["Youssef Tazi","4","212600000004","cardiologist"],
     ["Fatima Ezzahra","5","212600000005","anesthesiologist"]
+  ],
+  scans: [
+    // ScanReports: patient_id,scan_type,scan_region,findings,severity,confidence,recommendation,revised_urgency,flag_for_radiologist,scanned_at
+    ["P-4822","CT Chest","chest","Multiple right-sided rib fractures with small apical pneumothorax. Pulmonary contusion likely given mechanism of injury.","severe","88","Immediate chest tube evaluation; trauma surgery consult","92","true","2026-07-16T01:35:00Z"],
+    ["web-003","X-Ray Leg","left tibia","Displaced mid-shaft tibial fracture without open wound. Marked soft tissue swelling around the fracture site.","moderate","91","Orthopedic consult for reduction and casting","62","true","2026-07-16T01:42:00Z"],
+    ["web-005","X-Ray Hand","left hand","No fracture or dislocation identified. Minor superficial soft tissue swelling only.","normal","93","Clean and dress wound; discharge with care advice","10","false","2026-07-16T01:48:00Z"]
   ]
 };
-
 const demoMode = !CSV.patients && !CSV.rooms;
-
 /* --- tiny CSV parser (handles quoted fields) --- */
 function parseCSV(text) {
   const rows = []; let row = [], cur = "", q = false;
@@ -281,18 +292,25 @@ async function fetchTab(url, headerCell) {
   const res = await fetch(url + (url.includes("?") ? "&" : "?") + "t=" + Date.now(), { cache: "no-store" });
   return stripHeader(parseCSV(await res.text()), headerCell);
 }
-
 /* --- rendering --- */
 const catClass = c => {
   c = String(c || "").toLowerCase();
   return c === "critical" ? "critical" : c === "urgent" ? "urgent" : "routine";
 };
 const catColor = c => c === "critical" ? "var(--critical)" : c === "urgent" ? "var(--warning)" : "var(--good)";
+const sevClass = s => {
+  s = String(s || "").toLowerCase();
+  return s === "severe" ? "critical" : s === "moderate" ? "serious" : s === "mild" ? "urgent" : "routine";
+};
+const sevColor = s => {
+  s = String(s || "").toLowerCase();
+  return s === "severe" ? "var(--critical)" : s === "moderate" ? "var(--serious)" : s === "mild" ? "var(--warning)" : "var(--good)";
+};
+const isFlagged = v => String(v || "").trim().toLowerCase() === "true";
 const fmtTime = iso => {
   const d = new Date(iso);
   return isNaN(d) ? String(iso || "") : d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 };
-
 function renderQueue(rows) {
   // patients_queue: id,name,cin,symptoms,arrival_mode,score,category,reason,created_at
   const sorted = rows.filter(r => r[0]).slice().sort((a,b) => Number(b[5]) - Number(a[5]));
@@ -314,7 +332,31 @@ function renderQueue(rows) {
   }
   document.getElementById("queuePanel").innerHTML = html + "</tbody></table>";
 }
-
+function renderScans(rows) {
+  // ScanReports: patient_id,scan_type,scan_region,findings,severity,confidence,recommendation,revised_urgency,flag_for_radiologist,scanned_at
+  const scans = rows.filter(r => r[0]).slice().sort((a,b) => Number(b[7]) - Number(a[7]));
+  const flagged = scans.filter(r => isFlagged(r[8])).length;
+  document.getElementById("kpiScans").textContent = flagged;
+  document.getElementById("scanCount").textContent = scans.length ? scans.length + " scans · " + flagged + " flagged" : "";
+  if (!scans.length) { document.getElementById("scansPanel").innerHTML = '<div class="empty">No scan reports yet.</div>'; return; }
+  let html = '<table role="table"><thead><tr><th>Rev. score</th><th>Patient</th><th>Scan</th><th>Findings</th><th>Severity</th><th>Conf.</th><th>Flag</th><th>Time</th></tr></thead><tbody>';
+  for (const r of scans) {
+    const sev = String(r[4] || "normal").toLowerCase();
+    const cls = sevClass(sev);
+    const flag = isFlagged(r[8]);
+    html += `<tr>
+      <td class="score">${r[7] ?? ""}<div class="scorebar"><i style="width:${Math.min(100, Number(r[7])||0)}%;background:${sevColor(sev)}"></i></div></td>
+      <td class="name">${esc(r[0])}<div style="font-size:11px;color:var(--muted);font-weight:400">${esc(r[2] || "")}</div></td>
+      <td>${esc(r[1] || "")}</td>
+      <td class="findings" title="${esc((r[3]||"") + (r[6] ? " — Reco: " + r[6] : ""))}">${esc(r[3] || "")}</td>
+      <td><span class="badge ${cls}">${esc(sev)}</span></td>
+      <td style="font-variant-numeric:tabular-nums">${esc(r[5] || "")}%</td>
+      <td>${flag ? '<span class="flagpill">⚑ review</span>' : '<span class="clearpill">cleared</span>'}</td>
+      <td style="font-variant-numeric:tabular-nums">${fmtTime(r[9])}</td>
+    </tr>`;
+  }
+  document.getElementById("scansPanel").innerHTML = html + "</tbody></table>";
+}
 function renderRooms(rows) {
   const rooms = rows.filter(r => r[0]);
   const free = rooms.filter(r => String(r[2]).trim().toLowerCase() === "free");
@@ -330,7 +372,6 @@ function renderRooms(rows) {
     </div>`;
   }).join("");
 }
-
 function renderAlerts(rows) {
   const alerts = rows.filter(r => r[0]).slice().reverse();
   document.getElementById("kpiAlerts").textContent = alerts.length;
@@ -343,7 +384,6 @@ function renderAlerts(rows) {
       <span class="when">${fmtTime(a[5])}</span>
     </div>`).join("");
 }
-
 function renderDocs(rows) {
   const docs = rows.filter(r => r[0]);
   if (!docs.length) return;
@@ -354,29 +394,28 @@ function renderDocs(rows) {
       <div class="dphone">${esc(d[2] || "")}</div>
     </div>`).join("");
 }
-
 function esc(s) {
   return String(s).replace(/[&<>"']/g, m => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[m]));
 }
-
 /* --- main loop --- */
 async function tick() {
   const dot = document.getElementById("liveDot"), txt = document.getElementById("liveText");
   try {
-    let p, r, a, d;
+    let p, r, a, d, s;
     if (demoMode) {
-      ({ patients: p, rooms: r, alerts: a, doctors: d } = DEMO);
+      ({ patients: p, rooms: r, alerts: a, doctors: d, scans: s } = DEMO);
       dot.className = "dot demo"; txt.textContent = "DEMO MODE — paste CSV links to go live";
     } else {
-      [p, r, a, d] = await Promise.all([
+      [p, r, a, d, s] = await Promise.all([
         CSV.patients ? fetchTab(CSV.patients, "patient_id") : [],
         CSV.rooms    ? fetchTab(CSV.rooms, "room_id")       : [],
         CSV.alerts   ? fetchTab(CSV.alerts, "patient_id")   : [],
-        CSV.doctors  ? fetchTab(CSV.doctors, "doctor_name") : []
+        CSV.doctors  ? fetchTab(CSV.doctors, "doctor_name") : [],
+        CSV.scans    ? fetchTab(CSV.scans, "patient_id").catch(() => []) : []
       ]);
       dot.className = "dot"; txt.textContent = "LIVE — TRIO-DB";
     }
-    renderQueue(p); renderRooms(r); renderAlerts(a); renderDocs(d);
+    renderQueue(p); renderScans(s); renderRooms(r); renderAlerts(a); renderDocs(d);
   } catch (e) {
     dot.className = "dot demo"; txt.textContent = "connection issue — retrying…";
   }
